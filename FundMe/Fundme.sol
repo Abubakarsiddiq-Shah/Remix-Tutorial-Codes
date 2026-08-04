@@ -2,13 +2,16 @@
 
 pragma solidity ^0.8.18;
 
-import {PriceConvertor} from "./PriceConvertor.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {PriceConverter} from "./PriceConverter.sol";
 
-contract FundMe{
-    
-    using PriceConvertor for uint256;
-     
-    uint256 public constant MINIMUM_USD = 50 * 1e18;
+error NotOwner();
+
+contract FundMe {
+
+    using PriceConverter for uint256;
+
+    uint256 public constant MINIMUM_USD = 5e18;
 
     address[] public funders;
 
@@ -18,38 +21,51 @@ contract FundMe{
         i_owner = msg.sender;
     }
 
-    mapping(address funders => uint256 amuountFunded) public addressToAmountFunded;
+    mapping(address funders => uint256 amuountFunded)
+        public addressToAmountFunded;
 
-    function fund() public payable{
-         
-        require(msg.value.getConversionRate() >= MINIMUM_USD, "Minimum accepted amount is 5 ETH");
+    function fund() public payable {
+        require(
+            msg.value.getConversionRate() >= MINIMUM_USD,
+            "Minimum accepted amount is 5 ETH"
+        );
         funders.push(msg.sender);
-        addressToAmountFunded[msg.sender] += msg.value;  
+        addressToAmountFunded[msg.sender] += msg.value;
     }
 
-    function withdraw() public onlyOwner{
+    function getVersion() public view returns (uint256) {
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(
+            0x694AA1769357215DE4FAC081bf1f309aDC325306
+        );
+        return priceFeed.version();
+    }
 
-        for (uint256 funderIndex = 0; funderIndex < funders.length; funderIndex ++){
-            address funder = funders [funderIndex];
+    function withdraw() public onlyOwner {
+        for (
+            uint256 funderIndex = 0;
+            funderIndex < funders.length;
+            funderIndex++
+        ) {
+            address funder = funders[funderIndex];
             addressToAmountFunded[funder] = 0;
         }
 
-    funders = new address[](0);
-    (bool callSuccess, ) = payable(msg.sender).call{value:address(this).balance}("");
-    require (callSuccess, "Call Failed");
+        funders = new address[](0);
+
+        (bool callSuccess, ) = payable(msg.sender).call{value: address(this).balance}("");
+        require(callSuccess, "Call Failed");
     }
 
     modifier onlyOwner() {
-      require(msg.sender == i_owner, "Must be the Owner!");
-      _;
+        if (msg.sender != i_owner) revert NotOwner();
+        _;
     }
 
-    receive() external payable{
+    receive() external payable {
         fund();
     }
 
-    fallback() external payable{
+    fallback() external payable {
         fund();
     }
-
 }
